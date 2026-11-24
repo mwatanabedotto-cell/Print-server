@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel de impresión</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .layout { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+  @media (max-width: 820px) { .layout { grid-template-columns: 1fr; } .side { order: -1; } }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 6px 0 14px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tab { border-radius: 99px; }
+  .tab.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .job { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .job.new { animation: flash 2s ease-out; }
+  @keyframes flash { from { box-shadow: 0 0 0 4px var(--primary); } to { box-shadow: 0 0 0 0 transparent; } }
+  .job-top { display: flex; gap: 12px; align-items: flex-start; }
+  .icon { font-size: 34px; line-height: 1; }
+  .fname { font-weight: 700; font-size: 1.08rem; overflow-wrap: anywhere; }
+  .meta { color: var(--muted); font-size: .92rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .notes { background: var(--warn-bg); color: var(--warn); padding: 8px 12px; border-radius: 10px; font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .actions .primary { flex: 1; min-width: 150px; font-size: 1.05rem; padding: 12px; }
+  .empty { text-align: center; padding: 40px 10px; color: var(--muted); }
+  .qr { width: 100%; max-width: 240px; display: block; margin: 8px auto; border-radius: 8px; background: #fff; padding: 6px; }
+  .url { font-weight: 700; font-size: 1.15rem; text-align: center; overflow-wrap: anywhere; color: var(--primary); }
+  .side .card { margin-bottom: 14px; }
+  .alert { background: var(--err-bg); color: var(--err); padding: 10px 12px; border-radius: 10px; font-weight: 600; margin-bottom: 12px; }
+  dialog { border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--text); width: min(460px, 92vw); padding: 20px; }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  .count { background: var(--err); color: #fff; border-radius: 99px; padding: 0 8px; font-size: .85rem; margin-left: 4px; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="head">
+    <div class="top" style="margin:0">
+      <div class="logo">🖨️</div>
+      <div>
+        <h1 id="school">Asistente de Impresión</h1>
+        <p class="muted">Cola de impresión</p>
+      </div>
+    </div>
+    <button class="btn" id="settings-btn" aria-label="Ajustes">⚙️ Ajustes</button>
+  </div>
+
+  <div id="alerts"></div>
+
+  <div class="layout">
+    <section>
+      <div class="tabs">
+        <button class="btn tab active" data-tab="pend">Pendientes <span id="count" class="count" hidden></span></button>
+        <button class="btn tab" data-tab="done">Impresos</button>
+      </div>
+      <div id="list"></div>
+    </section>
+
+    <aside class="side">
+      <div class="card">
+        <h2>📲 Para enviar archivos</h2>
+        <p class="muted" style="margin-bottom:6px">Escanea el código o abre en el navegador del celular o PC (misma red Wi-Fi):</p>
+        <img id="qr" class="qr" alt="Código QR con la dirección" hidden>
+        <div id="urls" class="url">—</div>
+        <p class="muted" id="code-info" style="text-align:center"></p>
+      </div>
+      <div class="card">
+        <h2>💡 Cómo imprimir</h2>
+        <p class="muted">Toca <b>Imprimir</b>, elige la impresora y ajusta <b>copias</b> si hace falta. Word/Excel/PowerPoint se abren en otra app: usa su menú ⋮ → <b>Imprimir</b>.</p>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<dialog id="dlg">
+  <h2>Ajustes</h2>
+  <div class="field"><label for="s-name">Nombre de la escuela</label><input id="s-name" maxlength="60"></div>
+  <div class="field"><label for="s-code">Código para docentes (vacío = sin código)</label><input id="s-code" maxlength="20" inputmode="numeric"></div>
+  <div class="row">
+    <div class="field"><label for="s-days">Borrar después de (días)</label><input id="s-days" type="number" min="1" max="90"></div>
+    <div class="field"><label for="s-mb">Tamaño máx. (MB)</label><input id="s-mb" type="number" min="1" max="500"></div>
+  </div>
+  <div class="actions">
+    <button class="btn primary" id="s-save">Guardar</button>
+    <button class="btn" id="s-close">Cancelar</button>
+  </div>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const A = window.Android;
+let tab = 'pend', jobs = [], known = null, info = {};
+
+const ICONS = { pdf: '📕', doc: '📘', docx: '📘', odt: '📘', rtf: '📘', txt: '📄',
+  xls: '📗', xlsx: '📗', ods: '📗', ppt: '📙', pptx: '📙', odp: '📙' };
+const iconFor = ext => ICONS[ext.replace('.', '')] || (/(jpe?g|png|gif|webp|bmp)$/.test(ext) ? '🖼️' : '📄');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ago = t => {
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 1) return 'ahora';
+  if (m < 60) return `hace ${m} min`;
+  const d = new Date(t);
+  return d.toLocaleDateString('es', { weekday: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+};
+const size = b => b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+
+function loadInfo() {
+  if (!A) return;
+  info = JSON.parse(A.info());
+  $('#school').textContent = info.school_name;
+  $('#urls').innerHTML = info.urls.length ? info.urls.map(esc).join('<br>') : 'Conecta la tablet al Wi-Fi';
+  if (info.qr) { $('#qr').src = info.qr; $('#qr').hidden = false; } else $('#qr').hidden = true;
+  $('#code-info').textContent = info.upload_code ? `Código de acceso: ${info.upload_code}` : '';
+  let alerts = '';
+  if (info.error) alerts += `<div class="alert">⚠️ ${esc(info.error)}</div>`;
+  if (!info.battery_ok) alerts += `<div class="alert">🔋 Android puede cerrar la app para ahorrar batería. <button class="btn" onclick="Android.fixBattery()">Permitir que siga activa</button></div>`;
+  $('#alerts').innerHTML = alerts;
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/jobs', { cache: 'no-store' });
+    jobs = (await r.json()).sort((a, b) => b.created - a.created);
+  } catch (e) { return; }
+  const ids = new Set(jobs.map(j => j.id));
+  const fresh = known ? jobs.filter(j => !known.has(j.id)).map(j => j.id) : [];
+  known = ids;
+  render(fresh);
+}
+
+function render(fresh = []) {
+  const pend = jobs.filter(j => j.status !== 'impreso');
+  const done = jobs.filter(j => j.status === 'impreso');
+  const c = $('#count');
+  c.hidden = pend.length === 0; c.textContent = pend.length;
+  const list = tab === 'pend' ? pend : done;
+  if (!list.length) {
+    $('#list').innerHTML = `<div class="card empty">${tab === 'pend'
+      ? '✨ No hay archivos pendientes.<br>Los archivos que envíen los docentes aparecerán aquí.'
+      : 'Todavía no hay archivos impresos.'}</div>`;
+    return;
+  }
+  $('#list').innerHTML = list.map(j => {
+    const st = j.status === 'impreso' ? '<span class="badge ok">✔ Impreso</span>'
+      : j.status === 'error' ? `<span class="badge err">✖ ${esc(j.message || 'Error')}</span>`
+      : j.status === 'imprimiendo' ? '<span class="badge warn">⏳ Imprimiendo…</span>'
+      : '<span class="badge warn">Pendiente</span>';
+    const office = !/(pdf|jpe?g|png|gif|webp|bmp)$/.test(j.ext);
+    return `<article class="card job ${fresh.includes(j.id) ? 'new' : ''}">
+      <div class="job-top">
+        <div class="icon">${iconFor(j.ext)}</div>
+        <div style="flex:1;min-width:0">
+          <div class="fname">${esc(j.filename)}</div>
+          <div class="meta">👤 ${esc(j.teacher)} · ${ago(j.created)} · ${size(j.size)}</div>
+        </div>
+      </div>
+      <div class="tags">
+        ${st}
+        <span class="badge ${j.copies > 1 ? 'warn' : ''}">${j.copies} ${j.copies > 1 ? 'copias' : 'copia'}</span>
+        <span class="badge">${j.duplex ? 'Doble cara' : 'Una cara'}</span>
+        <span class="badge">${j.color ? 'Color' : 'Blanco y negro'}</span>
+      </div>
+      ${j.notes ? `<div class="notes">📝 ${esc(j.notes)}</div>` : ''}
+      <div class="actions">
+        <button class="btn primary" data-act="print" data-id="${j.id}">🖨️ ${office ? 'Abrir e imprimir' : 'Imprimir'}</button>
+        ${office ? '' : `<button class="btn" data-act="open" data-id="${j.id}">👁️ Ver</button>`}
+        ${j.status === 'impreso'
+          ? `<button class="btn" data-act="pendiente" data-id="${j.id}">↩ Pendiente</button>`
+          : `<button class="btn" data-act="impreso" data-id="${j.id}">✔ Hecho</button>`}
+        <button class="btn danger" data-act="delete" data-id="${j.id}">🗑️</button>
+      </div>
+    </article>`;
+  }).join('');
+}
+
+$('#list').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const { act, id } = b.dataset;
+  const job = jobs.find(j => j.id === id);
+  if (act === 'print') {
+    if (job && job.copies > 1) toast(`Recuerda: ${job.copies} copias`);
+    A && A.print(id);
+  } else if (act === 'open') {
+    A && A.open(id);
+  } else if (act === 'delete') {
+    if (!confirm(`¿Borrar "${job ? job.filename : ''}"?`)) return;
+    await fetch(`/api/jobs/${id}/delete`, { method: 'POST' });
+  } else {
+    await fetch(`/api/jobs/${id}/status?s=${act}`, { method: 'POST' });
+  }
+  setTimeout(refresh, 300);
+});
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+  tab = t.dataset.tab; render();
+}));
+
+$('#settings-btn').addEventListener('click', () => {
+  $('#s-name').value = info.school_name || '';
+  $('#s-code').value = info.upload_code || '';
+  $('#s-days').value = info.keep_days || 7;
+  $('#s-mb').value = info.max_mb || 50;
+  $('#dlg').showModal();
+});
+$('#s-close').addEventListener('click', () => $('#dlg').close());
+$('#s-save').addEventListener('click', () => {
+  A && A.saveSettings(JSON.stringify({
+    school_name: $('#s-name').value || 'Asistente de Impresión',
+    upload_code: $('#s-code').value,
+    keep_days: +$('#s-days').value || 7,
+    max_mb: +$('#s-mb').value || 50,
+  }));
+  $('#dlg').close(); loadInfo();
+});
+
+function toast(text) {
+  const t = document.createElement('div');
+  t.textContent = text;
+  t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:12px 20px;border-radius:12px;font-weight:700;z-index:9';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+loadInfo();
+refresh();
+setInterval(refresh, 3000);
+setInterval(loadInfo, 30000);
+</script>
+</body>
+</html>
