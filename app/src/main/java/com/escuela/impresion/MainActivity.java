@@ -135,6 +135,20 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String usbPrinters() {
+            return UsbPrint.list(MainActivity.this).toString();
+        }
+
+        @JavascriptInterface
+        public void printUsb(String id, String device) {
+            JSONObject job = store.find(id);
+            if (job == null) return;
+            store.setStatus(id, "imprimiendo", "");
+            UsbPrint.print(MainActivity.this, device, job, store.fileFor(job), (ok, msg) ->
+                    store.setStatus(id, ok ? "impreso" : "error", ok ? "" : msg));
+        }
+
+        @JavascriptInterface
         public void open(String id) {
             runOnUiThread(() -> openJob(id));
         }

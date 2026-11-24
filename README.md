@@ -24,6 +24,20 @@ sin instalar nada), y la tablet los muestra en una cola para imprimirlos con un 
 
 > Tras actualizar el APK no hace falta desinstalar la versión anterior.
 
+## Impresoras por USB (OTG)
+
+Conecta las impresoras a la tablet con un **hub USB‑C con entrada de carga (PD)**:
+así la tablet se carga y puede tener varias impresoras conectadas a la vez.
+Al conectar una impresora, Android pregunta si abrir **Asistente de Impresión**:
+marca **"Usar siempre"** para que no vuelva a pedir permiso.
+
+| Impresora | Cómo imprime por USB |
+|---|---|
+| **HP LaserJet Pro 4103fdw** (y otras HP con PDF nativo) | **⚡ Directo** desde la app: copias y doble cara automáticas, sin diálogo. PDF e imágenes. |
+| **Epson L3250** (y otras sin PDF nativo) | Botón **Imprimir** → ventana de Android con el plugin **Epson Print Enabler**. |
+
+La tarjeta **🔌 Impresoras USB** del panel muestra qué impresoras ve la tablet.
+
 ## Uso
 
 **Docentes (celular o PC, en la misma red Wi‑Fi):**
@@ -62,6 +76,7 @@ Proyecto Android en Java (`minSdk 21`, Android 5.0+). Componentes:
 - `WebServer.java` – servidor HTTP embebido (NanoHTTPD) en el puerto 8080.
 - `ServerService.java` – servicio en primer plano que mantiene el servidor activo.
 - `MainActivity.java` – panel (WebView) e impresión con `PrintManager`.
+- `UsbPrint.java` – impresión directa por USB (PJL + PDF).
 - `JobStore.java` – cola de trabajos (`jobs.json`) y ajustes.
 - `assets/upload.html` – página de los docentes; `assets/panel.html` – panel de la tablet.
 

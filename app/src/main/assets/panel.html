@@ -66,8 +66,12 @@
         <p class="muted" id="code-info" style="text-align:center"></p>
       </div>
       <div class="card">
+        <h2>🔌 Impresoras USB</h2>
+        <div id="usb" class="muted">Ninguna conectada.</div>
+      </div>
+      <div class="card">
         <h2>💡 Cómo imprimir</h2>
-        <p class="muted">Toca <b>Imprimir</b>, elige la impresora y ajusta <b>copias</b> si hace falta. Word/Excel/PowerPoint se abren en otra app: usa su menú ⋮ → <b>Imprimir</b>.</p>
+        <p class="muted"><b>⚡ HP por USB</b>: imprime directo, con copias y doble cara automáticas (PDF e imágenes).<br><b>Imprimir</b>: abre la ventana de Android; elige la impresora (Epson para color) y ajusta <b>copias</b>.<br>Word/Excel/PowerPoint se abren en otra app: menú ⋮ → <b>Imprimir</b>.</p>
       </div>
     </aside>
   </div>
@@ -90,7 +94,7 @@
 <script>
 const $ = s => document.querySelector(s);
 const A = window.Android;
-let tab = 'pend', jobs = [], known = null, info = {};
+let tab = 'pend', jobs = [], known = null, info = {}, usb = [];
 
 const ICONS = { pdf: '📕', doc: '📘', docx: '📘', odt: '📘', rtf: '📘', txt: '📄',
   xls: '📗', xlsx: '📗', ods: '📗', ppt: '📙', pptx: '📙', odp: '📙' };
@@ -118,7 +122,18 @@ function loadInfo() {
   $('#alerts').innerHTML = alerts;
 }
 
+function loadUsb() {
+  if (!A || !A.usbPrinters) return;
+  try { usb = JSON.parse(A.usbPrinters()); } catch (e) { usb = []; }
+  $('#usb').innerHTML = usb.length ? usb.map(u => `<div style="margin:6px 0">
+      <b style="color:var(--text)">${esc(u.name)}</b><br>
+      ${u.direct ? '<span class="badge ok">⚡ Directo: copias y doble cara automáticas</span>'
+                 : '<span class="badge">Usa “Imprimir” (plugin de la marca)</span>'}
+    </div>`).join('') : 'Ninguna conectada. Conecta la impresora con el adaptador OTG.';
+}
+
 async function refresh() {
+  loadUsb();
   try {
     const r = await fetch('/api/jobs', { cache: 'no-store' });
     jobs = (await r.json()).sort((a, b) => b.created - a.created);
@@ -147,6 +162,8 @@ function render(fresh = []) {
       : j.status === 'imprimiendo' ? '<span class="badge warn">⏳ Imprimiendo…</span>'
       : '<span class="badge warn">Pendiente</span>';
     const office = !/(pdf|jpe?g|png|gif|webp|bmp)$/.test(j.ext);
+    const direct = office ? [] : usb.filter(u => u.direct);
+    const usbBtns = direct.map(u => `<button class="btn primary" data-act="usb" data-dev="${esc(u.device)}" data-id="${j.id}">⚡ ${esc(u.vendor)} por USB${j.color ? ' (B/N)' : ''}</button>`).join('');
     return `<article class="card job ${fresh.includes(j.id) ? 'new' : ''}">
       <div class="job-top">
         <div class="icon">${iconFor(j.ext)}</div>
@@ -163,7 +180,8 @@ function render(fresh = []) {
       </div>
       ${j.notes ? `<div class="notes">📝 ${esc(j.notes)}</div>` : ''}
       <div class="actions">
-        <button class="btn primary" data-act="print" data-id="${j.id}">🖨️ ${office ? 'Abrir e imprimir' : 'Imprimir'}</button>
+        ${usbBtns}
+        <button class="btn ${direct.length && !j.color ? '' : 'primary'}" data-act="print" data-id="${j.id}">🖨️ ${office ? 'Abrir e imprimir' : 'Imprimir'}${j.color && direct.length ? ' (color)' : ''}</button>
         ${office ? '' : `<button class="btn" data-act="open" data-id="${j.id}">👁️ Ver</button>`}
         ${j.status === 'impreso'
           ? `<button class="btn" data-act="pendiente" data-id="${j.id}">↩ Pendiente</button>`
@@ -182,6 +200,9 @@ $('#list').addEventListener('click', async e => {
   if (act === 'print') {
     if (job && job.copies > 1) toast(`Recuerda: ${job.copies} copias`);
     A && A.print(id);
+  } else if (act === 'usb') {
+    A && A.printUsb(id, b.dataset.dev);
+    toast(`Enviando ${job ? job.copies : 1} copia(s) por USB…`);
   } else if (act === 'open') {
     A && A.open(id);
   } else if (act === 'delete') {
