@@ -31,6 +31,7 @@
   }
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   background: var(--bg);
@@ -63,9 +64,9 @@ input[type=text], input:not([type]), input[type=number], input[type=password] {
 }
 input:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
 .row { display: flex; gap: 14px; flex-wrap: wrap; }
-.checks { flex-direction: row; align-items: flex-end; gap: 18px; padding-bottom: 10px; }
-.check { display: flex; align-items: center; gap: 8px; font-weight: 500; }
-.check input { width: 22px; height: 22px; accent-color: var(--primary); }
+.checks { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: 10px 18px; padding-bottom: 10px; flex: 2; }
+.check { display: flex; align-items: center; gap: 8px; font-weight: 500; white-space: nowrap; }
+.check input { width: 22px; height: 22px; flex-shrink: 0; margin: 0; accent-color: var(--primary); }
 .drop {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 26px 14px; text-align: center;
